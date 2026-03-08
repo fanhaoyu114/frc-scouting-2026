@@ -1,9 +1,9 @@
 import { createClient, Client } from '@libsql/client';
 
-let db: Client | null = null;
+let dbInstance: Client | null = null;
 
 function getDbClient(): Client {
-  if (db) return db;
+  if (dbInstance) return dbInstance;
 
   const databaseUrl = process.env.DATABASE_URL;
   const authToken = process.env.DATABASE_AUTH_TOKEN;
@@ -19,25 +19,25 @@ function getDbClient(): Client {
       throw new Error('DATABASE_AUTH_TOKEN is required for Turso connection');
     }
     console.log('[DB] Connecting to Turso...');
-    db = createClient({
+    dbInstance = createClient({
       url: databaseUrl,
       authToken: authToken,
     });
   } else {
     console.log('[DB] Using local SQLite...');
-    db = createClient({ url: databaseUrl });
+    dbInstance = createClient({ url: databaseUrl });
   }
 
   console.log('[DB] Connected successfully');
-  return db;
+  return dbInstance;
 }
 
 export const getDb = (): Client => {
-  if (!db) return getDbClient();
-  return db;
+  if (!dbInstance) return getDbClient();
+  return dbInstance;
 };
 
-// Export db for backward compatibility
+// Export db for backward compatibility - uses Proxy to lazily initialize
 export const db: Client = new Proxy({} as Client, {
   get(target, prop) {
     const client = getDb();
