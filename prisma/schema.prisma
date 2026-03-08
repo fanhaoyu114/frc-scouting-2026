@@ -1,0 +1,158 @@
+// FRC 2026 REBUILT Scouting Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// User model for scout accounts
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  name      String?
+  isAdmin   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  scoutingRecords ScoutingData[]
+  sessions        Session[]
+}
+
+// FRC Team model
+model Team {
+  id          String   @id @default(cuid())
+  teamNumber  Int      @unique
+  nickname    String?
+  city        String?
+  state       String?
+  country     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  scoutingRecords ScoutingData[]
+}
+
+// Match model - represents a specific match in the competition
+model Match {
+  id            String   @id @default(cuid())
+  matchNumber   Int      @unique
+  matchType     String   @default("QUALIFICATION") // QUALIFICATION, PLAYOFF, FINALS
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  scoutingRecords ScoutingData[]
+}
+
+// Scouting Data model - the main scouting record
+model ScoutingData {
+  id        String   @id @default(cuid())
+  
+  // Relations
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id])
+  matchId   String
+  match     Match    @relation(fields: [matchId], references: [id])
+  
+  // Scout info - 情报员
+  scoutName String?
+  
+  // Alliance
+  alliance  String   // "RED" or "BLUE"
+  
+  // Robot type - 车辆类型
+  robotType String?  // "bump", "trench", "both", "bump_heavy", "trench_heavy"
+  
+  // Autonomous Phase (20 seconds) - 自动阶段
+  autoLeftStartLine    Boolean  @default(false)
+  autoFuelShots        Int      @default(0)  // 约发射球数
+  autoFuelAccuracy     Int      @default(50) // 命中率 (手动输入百分比)
+  autoClimbLevel       Int      @default(0)  // 0, 1, 2, 3
+  
+  // Teleop Phase Cycles - 手动阶段各周期
+  // Transition (10 seconds) - 过渡阶段
+  teleopTransitionShots     Int  @default(0)
+  teleopTransitionAccuracy  Int  @default(50)
+  teleopTransitionDefense   Int  @default(0)  // 防守时间(秒)
+  teleopTransitionTransport Int  @default(0)  // 运球时间(秒)
+  
+  // Shift 1 (25 seconds) - 切换1
+  teleopShift1Shots         Int  @default(0)
+  teleopShift1Accuracy      Int  @default(50)
+  teleopShift1Defense       Int  @default(0)  // 防守时间(秒)
+  teleopShift1Transport     Int  @default(0)  // 运球时间(秒)
+  
+  // Shift 2 (25 seconds) - 切换2
+  teleopShift2Shots         Int  @default(0)
+  teleopShift2Accuracy      Int  @default(50)
+  teleopShift2Defense       Int  @default(0)  // 防守时间(秒)
+  teleopShift2Transport     Int  @default(0)  // 运球时间(秒)
+  
+  // Shift 3 (25 seconds) - 切换3
+  teleopShift3Shots         Int  @default(0)
+  teleopShift3Accuracy      Int  @default(50)
+  teleopShift3Defense       Int  @default(0)  // 防守时间(秒)
+  teleopShift3Transport     Int  @default(0)  // 运球时间(秒)
+  
+  // Shift 4 (25 seconds) - 切换4
+  teleopShift4Shots         Int  @default(0)
+  teleopShift4Accuracy      Int  @default(50)
+  teleopShift4Defense       Int  @default(0)  // 防守时间(秒)
+  teleopShift4Transport     Int  @default(0)  // 运球时间(秒)
+  
+  // Endgame (30 seconds) - 比赛最终阶段
+  teleopEndgameShots        Int  @default(0)
+  teleopEndgameAccuracy     Int  @default(50)
+  
+  // Climbing - 攀爬
+  teleopClimbLevel     Int      @default(0)
+  teleopClimbTime      Int      @default(0)  // 攀爬时间(秒)
+  
+  // Fouls - 犯规记录
+  minorFouls          Int      @default(0)
+  majorFouls          Int      @default(0)
+  yellowCard          Boolean  @default(false)
+  redCard             Boolean  @default(false)
+  foulRecords         String?  // JSON array of foul records: [{type, time, description}]
+  foulNotes           String?
+  
+  // Ratings (1-10, 以0.2为单位) - 综合评分
+  driverRating        Float    @default(5.0)
+  defenseRating       Float    @default(5.0)
+  
+  // Issues - 宕机记录
+  wasDisabled         Boolean  @default(false)
+  disabledDuration    String?  // "5s", "10s", "15s", etc.
+  
+  // Notes - 备注
+  notes               String?
+  
+  // Calculated/derived fields
+  autoScore           Int      @default(0)
+  teleopScore         Int      @default(0)
+  totalScore          Int      @default(0)
+  
+  // Auto phase winner for hub status - 自动阶段是否占优
+  autoWon             Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([matchId, teamId])
+}
+
+// Session model for login sessions
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
