@@ -1,81 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { randomUUID } from 'crypto';
-import type { User } from '@prisma/client';
+import { getDb, generateId, generateToken } from '@/lib/db';
 
-// Login endpoint
 export async function POST(request: NextRequest) {
   try {
+    const db = getDb();
     const body = await request.json();
     const { username, password } = body;
 
     if (!username || !password) {
-      return NextResponse.json(
-        { error: 'Username and password are required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Username and password are required' }, { status: 400 });
     }
 
-    // Check for preview account or database user
-    let user: User | null = null;
-    
-    if (username === '预览账号' && password === '6353') {
-      // Preview account - check if exists, if not create
-      user = await db.user.findUnique({
-        where: { username: '预览账号' }
-      });
+    let user: { id: string; username: string; password: string; name: string | null; isAdmin: number } | null = null;
 
-      if (!user) {
-        user = await db.user.create({
-          data: {
-            username: '预览账号',
-            password: '6353',
-            name: 'Preview Account',
-            isAdmin: true
-          }
+    if (username === '预览账号' && password === '6353') {
+      const result = await db.execute({ sql: 'SELECT * FROM User WHERE username = ?', args: ['预览账号'] });
+
+      if (result.rows.length > 0) {
+        user = result.rows[0] as any;
+      } else {
+        const newId = generateId();
+        await db.execute({
+          sql: 'INSERT INTO User (id, username, password, name, isAdmin) VALUES (?, ?, ?, ?, 1)',
+          args: [newId, '预览账号', '6353', 'Preview Account']
         });
+        user = { id: newId, username: '预览账号', password: '6353', name: 'Preview Account', isAdmin: 1 };
       }
     } else {
-      // Check database for user
-      user = await db.user.findUnique({
-        where: { username }
-      });
-      
-      if (!user || user.password !== password) {
-        return NextResponse.json(
-          { error: 'Invalid username or password' },
-          { status: 401 }
-        );
+      const result = await db.execute({ sql: 'SELECT * FROM User WHERE username = ?', args: [username] });
+      if (result.rows.length === 0 || (result.rows[0] as any).password !== password) {
+        return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
       }
+      user = result.rows[0] as any;
     }
 
-    // Create session token
-    const token = randomUUID();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const token = generateToken();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-    await db.session.create({
-      data: {
-        userId: user.id,
-        token,
-        expiresAt
-      }
+    await db.execute({
+      sql: 'INSERT INTO Session (id, userId, token, expiresAt) VALUES (?, ?, ?, ?)',
+      args: [generateId(), user!.id, token, expiresAt]
     });
 
     return NextResponse.json({
       success: true,
-      user: {
-        id: user.id,
-        username: user.username,
-        name: user.name,
-        isAdmin: user.isAdmin
-      },
+      user: { id: user!.id, username: user!.username, name: user!.name, isAdmin: user!.isAdmin === 1 },
       token
     });
   } catch (error) {
     console.error('Login error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

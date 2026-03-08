@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
-// Logout endpoint
 export async function POST(request: NextRequest) {
   try {
+    const db = getDb();
     const token = request.headers.get('Authorization')?.replace('Bearer ', '');
-    
+
     if (token) {
-      await db.session.deleteMany({
-        where: { token }
-      });
+      await db.execute({ sql: 'DELETE FROM Session WHERE token = ?', args: [token] });
     }
 
     return NextResponse.json({ success: true });
