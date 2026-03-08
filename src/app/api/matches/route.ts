@@ -13,9 +13,11 @@ export async function GET(request: NextRequest) {
       ORDER BY m.matchNumber ASC
     `);
 
+    // Map to frontend expected format
     const matches = result.rows.map(row => ({
       id: row.id,
       matchNumber: row.matchNumber,
+      matchType: 'QUALIFICATION',
       blue1: row.blue1,
       blue2: row.blue2,
       blue3: row.blue3,
@@ -25,7 +27,6 @@ export async function GET(request: NextRequest) {
       blueScore: row.blueScore,
       redScore: row.redScore,
       winner: row.winner,
-      createdAt: row.createdAt,
       _count: { scoutingRecords: (row.recordCount as number) || 0 }
     }));
 
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
   try {
     const db = await getDb();
     const body = await request.json();
-    const { matchNumber, blue1, blue2, blue3, red1, red2, red3 } = body;
+    const { matchNumber, matchType, blue1, blue2, blue3, red1, red2, red3 } = body;
 
     if (!matchNumber) {
       return NextResponse.json({ error: 'Match number is required' }, { status: 400 });
@@ -53,7 +54,18 @@ export async function POST(request: NextRequest) {
     });
 
     if (existingMatch.rows.length > 0) {
-      return NextResponse.json(existingMatch.rows[0]);
+      const row = existingMatch.rows[0];
+      return NextResponse.json({
+        id: row.id,
+        matchNumber: row.matchNumber,
+        matchType: 'QUALIFICATION',
+        blue1: row.blue1,
+        blue2: row.blue2,
+        blue3: row.blue3,
+        red1: row.red1,
+        red2: row.red2,
+        red3: row.red3
+      });
     }
 
     const id = generateId();
@@ -64,7 +76,15 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
-      id, matchNumber, blue1, blue2, blue3, red1, red2, red3
+      id,
+      matchNumber,
+      matchType: matchType || 'QUALIFICATION',
+      blue1,
+      blue2,
+      blue3,
+      red1,
+      red2,
+      red3
     });
   } catch (error) {
     console.error('Create match error:', error);

@@ -8,11 +8,8 @@ export async function GET(request: NextRequest) {
 
     // Get all users
     const usersResult = await db.execute(`
-      SELECT u.id, u.username, u.name, u.isAdmin,
-             COUNT(sr.id) as recordCount
+      SELECT u.id, u.username, u.name, u.isAdmin
       FROM User u
-      LEFT JOIN ScoutingRecord sr ON u.id = sr.scoutName
-      GROUP BY u.id
       ORDER BY u.id DESC
     `);
 
@@ -21,7 +18,7 @@ export async function GET(request: NextRequest) {
       username: row.username,
       name: row.name,
       isAdmin: row.isAdmin === 1,
-      _count: { scoutingRecords: (row.recordCount as number) || 0 }
+      _count: { scoutingRecords: 0 }
     }));
 
     // Get system stats

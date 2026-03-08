@@ -12,10 +12,14 @@ export async function GET(request: NextRequest) {
       ORDER BY t.number ASC
     `);
 
+    // Map to frontend expected format
     const teams = result.rows.map(row => ({
       id: row.id,
-      number: row.number,
-      name: row.name,
+      teamNumber: row.number,
+      nickname: row.name,
+      city: null,
+      state: null,
+      country: null,
       _count: { scoutingRecords: (row.recordCount as number) || 0 }
     }));
 
@@ -30,24 +34,39 @@ export async function POST(request: NextRequest) {
   try {
     const db = await getDb();
     const body = await request.json();
-    const { number, name } = body;
+    const { teamNumber, nickname } = body;
 
-    if (!number) {
+    if (!teamNumber) {
       return NextResponse.json({ error: 'Team number is required' }, { status: 400 });
     }
 
-    const existing = await db.execute({ sql: 'SELECT * FROM Team WHERE number = ?', args: [number] });
+    const existing = await db.execute({ sql: 'SELECT * FROM Team WHERE number = ?', args: [teamNumber] });
     if (existing.rows.length > 0) {
-      return NextResponse.json(existing.rows[0]);
+      const row = existing.rows[0];
+      return NextResponse.json({
+        id: row.id,
+        teamNumber: row.number,
+        nickname: row.name,
+        city: null,
+        state: null,
+        country: null
+      });
     }
 
     const id = generateId();
     await db.execute({
       sql: 'INSERT INTO Team (id, number, name) VALUES (?, ?, ?)',
-      args: [id, number, name || null]
+      args: [id, teamNumber, nickname || null]
     });
 
-    return NextResponse.json({ id, number, name });
+    return NextResponse.json({
+      id,
+      teamNumber,
+      nickname: nickname || null,
+      city: null,
+      state: null,
+      country: null
+    });
   } catch (error) {
     console.error('Create team error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -64,6 +83,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Team ID is required' }, { status: 400 });
     }
 
+    await db.execute({ sql: 'DELETE FROM ScoutingRecord WHERE teamId = ?', args: [id] });
     await db.execute({ sql: 'DELETE FROM Team WHERE id = ?', args: [id] });
     return NextResponse.json({ success: true });
   } catch (error) {

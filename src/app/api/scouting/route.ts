@@ -37,29 +37,80 @@ export async function GET(request: NextRequest) {
 
     const result = await db.execute({ sql, args });
 
+    // Map to frontend expected format with nested team and match objects
     const records = result.rows.map(row => ({
       id: row.id,
+      teamId: row.teamId,
       matchId: row.matchId,
-      teamNumber: row.teamNumber,
-      teamName: row.teamName,
-      matchNumber: row.matchNumber,
+      userId: row.id, // fallback
       alliance: row.alliance,
-      station: row.station,
-      autoLeave: row.autoLeave,
-      autoCoralLeft: row.autoCoralLeft,
-      autoCoralRight: row.autoCoralRight,
-      autoAlgae: row.autoAlgae,
-      teleopCoralLeft: row.teleopCoralLeft,
-      teleopCoralRight: row.teleopCoralRight,
-      teleopAlgae: row.teleopAlgae,
-      barge: row.barge,
-      processor: row.processor,
-      climb: row.climb,
-      defense: row.defense,
-      notes: row.notes,
       scoutName: row.scoutName,
-      scoutTeam: row.scoutTeam,
-      createdAt: row.createdAt
+      robotType: null,
+      // Auto
+      autoLeftStartLine: (row.autoLeave as number) > 0,
+      autoFuelShots: 0,
+      autoFuelAccuracy: 50,
+      autoClimbLevel: 0,
+      autoWon: false,
+      // Teleop - map to new schema
+      teleopTransitionShots: 0,
+      teleopTransitionAccuracy: 50,
+      teleopTransitionDefense: 0,
+      teleopTransitionTransport: 0,
+      teleopShift1Shots: (row.teleopCoralLeft as number) || 0,
+      teleopShift1Accuracy: 50,
+      teleopShift1Defense: 0,
+      teleopShift1Transport: 0,
+      teleopShift2Shots: (row.teleopCoralRight as number) || 0,
+      teleopShift2Accuracy: 50,
+      teleopShift2Defense: 0,
+      teleopShift2Transport: 0,
+      teleopShift3Shots: (row.teleopAlgae as number) || 0,
+      teleopShift3Accuracy: 50,
+      teleopShift3Defense: 0,
+      teleopShift3Transport: 0,
+      teleopShift4Shots: (row.barge as number) || 0,
+      teleopShift4Accuracy: 50,
+      teleopShift4Defense: 0,
+      teleopShift4Transport: 0,
+      teleopEndgameShots: (row.processor as number) || 0,
+      teleopEndgameAccuracy: 50,
+      // Climb
+      teleopClimbLevel: row.climb === 'none' ? 0 : row.climb === 'shallow' ? 1 : row.climb === 'deep' ? 2 : 0,
+      teleopClimbTime: 0,
+      // Fouls
+      minorFouls: 0,
+      majorFouls: 0,
+      yellowCard: false,
+      redCard: false,
+      foulRecords: null,
+      foulNotes: null,
+      // Ratings
+      driverRating: 5,
+      defenseRating: (row.defense as number) || 0,
+      // Issues
+      wasDisabled: false,
+      disabledDuration: null,
+      // Notes
+      notes: row.notes,
+      // Scores (calculated)
+      autoScore: (row.autoLeave as number) || 0,
+      teleopScore: ((row.teleopCoralLeft as number) || 0) + ((row.teleopCoralRight as number) || 0) + ((row.teleopAlgae as number) || 0),
+      totalScore: ((row.autoLeave as number) || 0) + ((row.teleopCoralLeft as number) || 0) + ((row.teleopCoralRight as number) || 0) + ((row.teleopAlgae as number) || 0),
+      // Nested objects for frontend
+      team: {
+        id: row.teamId,
+        teamNumber: row.teamNumber,
+        nickname: row.teamName,
+        city: null,
+        state: null,
+        country: null
+      },
+      match: {
+        id: row.matchId,
+        matchNumber: row.matchNumber,
+        matchType: 'QUALIFICATION'
+      }
     }));
 
     return NextResponse.json(records);
@@ -182,23 +233,71 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Return in frontend expected format
     return NextResponse.json({
-      id, matchId, teamId, teamNumber, matchNumber, alliance,
-      station: station || 1,
-      autoLeave: autoLeave || 0,
-      autoCoralLeft: autoCoralLeft || 0,
-      autoCoralRight: autoCoralRight || 0,
-      autoAlgae: autoAlgae || 0,
-      teleopCoralLeft: teleopCoralLeft || 0,
-      teleopCoralRight: teleopCoralRight || 0,
-      teleopAlgae: teleopAlgae || 0,
-      barge: barge || 0,
-      processor: processor || 0,
-      climb: climb || 'none',
-      defense: defense || 0,
-      notes: notes || null,
+      id,
+      teamId,
+      matchId,
+      userId: id,
+      alliance,
       scoutName: scoutName || null,
-      scoutTeam: scoutTeam || null
+      robotType: null,
+      autoLeftStartLine: (autoLeave || 0) > 0,
+      autoFuelShots: 0,
+      autoFuelAccuracy: 50,
+      autoClimbLevel: 0,
+      autoWon: false,
+      teleopTransitionShots: 0,
+      teleopTransitionAccuracy: 50,
+      teleopTransitionDefense: 0,
+      teleopTransitionTransport: 0,
+      teleopShift1Shots: teleopCoralLeft || 0,
+      teleopShift1Accuracy: 50,
+      teleopShift1Defense: 0,
+      teleopShift1Transport: 0,
+      teleopShift2Shots: teleopCoralRight || 0,
+      teleopShift2Accuracy: 50,
+      teleopShift2Defense: 0,
+      teleopShift2Transport: 0,
+      teleopShift3Shots: teleopAlgae || 0,
+      teleopShift3Accuracy: 50,
+      teleopShift3Defense: 0,
+      teleopShift3Transport: 0,
+      teleopShift4Shots: barge || 0,
+      teleopShift4Accuracy: 50,
+      teleopShift4Defense: 0,
+      teleopShift4Transport: 0,
+      teleopEndgameShots: processor || 0,
+      teleopEndgameAccuracy: 50,
+      teleopClimbLevel: climb === 'none' ? 0 : climb === 'shallow' ? 1 : climb === 'deep' ? 2 : 0,
+      teleopClimbTime: 0,
+      minorFouls: 0,
+      majorFouls: 0,
+      yellowCard: false,
+      redCard: false,
+      foulRecords: null,
+      foulNotes: null,
+      driverRating: 5,
+      defenseRating: defense || 0,
+      wasDisabled: false,
+      disabledDuration: null,
+      notes: notes || null,
+      autoScore: autoLeave || 0,
+      teleopScore: (teleopCoralLeft || 0) + (teleopCoralRight || 0) + (teleopAlgae || 0),
+      totalScore: (autoLeave || 0) + (teleopCoralLeft || 0) + (teleopCoralRight || 0) + (teleopAlgae || 0),
+      team: {
+        id: teamId,
+        teamNumber,
+        nickname: null,
+        city: null,
+        state: null,
+        country: null
+      },
+      match: {
+        id: matchId,
+        matchNumber,
+        matchType: 'QUALIFICATION'
+      }
     });
   } catch (error) {
     console.error('Create scouting record error:', error);
