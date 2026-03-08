@@ -23,24 +23,13 @@ CREATE TABLE IF NOT EXISTS Session (
 CREATE TABLE IF NOT EXISTS Team (
   id TEXT PRIMARY KEY,
   number INTEGER UNIQUE NOT NULL,
-  name TEXT,
-  autoLeave INTEGER DEFAULT 0,
-  autoCoralLeft INTEGER DEFAULT 0,
-  autoCoralRight INTEGER DEFAULT 0,
-  autoAlgae INTEGER DEFAULT 0,
-  teleopCoralLeft INTEGER DEFAULT 0,
-  teleopCoralRight INTEGER DEFAULT 0,
-  teleopAlgae INTEGER DEFAULT 0,
-  barge INTEGER DEFAULT 0,
-  processor INTEGER DEFAULT 0,
-  climb INTEGER DEFAULT 0,
-  defense INTEGER DEFAULT 0,
-  notes TEXT
+  name TEXT
 );
 
 CREATE TABLE IF NOT EXISTS Match (
   id TEXT PRIMARY KEY,
   matchNumber INTEGER NOT NULL,
+  matchType TEXT DEFAULT 'QUALIFICATION',
   blue1 INTEGER,
   blue2 INTEGER,
   blue3 INTEGER,
@@ -56,30 +45,87 @@ CREATE TABLE IF NOT EXISTS Match (
 CREATE TABLE IF NOT EXISTS ScoutingRecord (
   id TEXT PRIMARY KEY,
   matchId TEXT,
-  teamNumber INTEGER NOT NULL,
   teamId TEXT,
+  userId TEXT,
   alliance TEXT NOT NULL,
-  station INTEGER DEFAULT 1,
-  autoLeave INTEGER DEFAULT 0,
-  autoCoralLeft INTEGER DEFAULT 0,
-  autoCoralRight INTEGER DEFAULT 0,
-  autoAlgae INTEGER DEFAULT 0,
-  teleopCoralLeft INTEGER DEFAULT 0,
-  teleopCoralRight INTEGER DEFAULT 0,
-  teleopAlgae INTEGER DEFAULT 0,
-  barge INTEGER DEFAULT 0,
-  processor INTEGER DEFAULT 0,
-  climb TEXT DEFAULT 'none',
-  defense INTEGER DEFAULT 0,
-  notes TEXT,
   scoutName TEXT,
-  scoutTeam INTEGER,
+  robotType TEXT,
+
+  -- Autonomous Phase
+  autoLeftStartLine INTEGER DEFAULT 0,
+  autoFuelShots INTEGER DEFAULT 0,
+  autoFuelAccuracy REAL DEFAULT 50,
+  autoClimbLevel INTEGER DEFAULT 0,
+  autoWon INTEGER DEFAULT 0,
+
+  -- Teleop Transition
+  teleopTransitionShots INTEGER DEFAULT 0,
+  teleopTransitionAccuracy REAL DEFAULT 50,
+  teleopTransitionDefense INTEGER DEFAULT 0,
+  teleopTransitionTransport INTEGER DEFAULT 0,
+
+  -- Teleop Shift 1
+  teleopShift1Shots INTEGER DEFAULT 0,
+  teleopShift1Accuracy REAL DEFAULT 50,
+  teleopShift1Defense INTEGER DEFAULT 0,
+  teleopShift1Transport INTEGER DEFAULT 0,
+
+  -- Teleop Shift 2
+  teleopShift2Shots INTEGER DEFAULT 0,
+  teleopShift2Accuracy REAL DEFAULT 50,
+  teleopShift2Defense INTEGER DEFAULT 0,
+  teleopShift2Transport INTEGER DEFAULT 0,
+
+  -- Teleop Shift 3
+  teleopShift3Shots INTEGER DEFAULT 0,
+  teleopShift3Accuracy REAL DEFAULT 50,
+  teleopShift3Defense INTEGER DEFAULT 0,
+  teleopShift3Transport INTEGER DEFAULT 0,
+
+  -- Teleop Shift 4
+  teleopShift4Shots INTEGER DEFAULT 0,
+  teleopShift4Accuracy REAL DEFAULT 50,
+  teleopShift4Defense INTEGER DEFAULT 0,
+  teleopShift4Transport INTEGER DEFAULT 0,
+
+  -- Teleop Endgame
+  teleopEndgameShots INTEGER DEFAULT 0,
+  teleopEndgameAccuracy REAL DEFAULT 50,
+
+  -- Climbing
+  teleopClimbLevel INTEGER DEFAULT 0,
+  teleopClimbTime INTEGER DEFAULT 0,
+
+  -- Fouls
+  minorFouls INTEGER DEFAULT 0,
+  majorFouls INTEGER DEFAULT 0,
+  yellowCard INTEGER DEFAULT 0,
+  redCard INTEGER DEFAULT 0,
+  foulRecords TEXT,
+  foulNotes TEXT,
+
+  -- Ratings
+  driverRating REAL DEFAULT 5.0,
+  defenseRating REAL DEFAULT 5.0,
+
+  -- Issues
+  wasDisabled INTEGER DEFAULT 0,
+  disabledDuration TEXT,
+
+  -- Notes
+  notes TEXT,
+
+  -- Calculated scores
+  autoScore INTEGER DEFAULT 0,
+  teleopScore INTEGER DEFAULT 0,
+  totalScore INTEGER DEFAULT 0,
+
   createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (matchId) REFERENCES Match(id),
-  FOREIGN KEY (teamId) REFERENCES Team(id)
+  FOREIGN KEY (teamId) REFERENCES Team(id),
+  FOREIGN KEY (userId) REFERENCES User(id)
 );
 `;
-// Build v1750205761
 
 async function initializeTables(db: Client): Promise<void> {
   if (tablesInitialized) return;
@@ -96,7 +142,6 @@ async function initializeTables(db: Client): Promise<void> {
     console.log('[DB] Tables initialized successfully');
   } catch (error) {
     console.error('[DB] Error initializing tables:', error);
-    // Don't throw - tables might already exist
     tablesInitialized = true;
   }
 }
