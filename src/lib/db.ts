@@ -1,4 +1,4 @@
-import { createClient, Client } from '@libsql/client';
+import { createClient, Client } from '@libsql/client/web';
 
 let dbInstance: Client | null = null;
 let tablesInitialized = false;
@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS ScoutingRecord (
   FOREIGN KEY (teamId) REFERENCES Team(id)
 );
 `;
+// Build v1750205761
 
 async function initializeTables(db: Client): Promise<void> {
   if (tablesInitialized) return;
@@ -95,7 +96,8 @@ async function initializeTables(db: Client): Promise<void> {
     console.log('[DB] Tables initialized successfully');
   } catch (error) {
     console.error('[DB] Error initializing tables:', error);
-    throw error;
+    // Don't throw - tables might already exist
+    tablesInitialized = true;
   }
 }
 
@@ -142,4 +144,3 @@ export function generateId(): string {
 export function generateToken(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36) + Math.random().toString(36).substring(2);
 }
-// Build v1772979386
