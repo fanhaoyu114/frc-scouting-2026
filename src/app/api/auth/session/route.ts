@@ -3,7 +3,7 @@ import { getDb } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
-    const db = getDb();
+    const db = await getDb();
     const token = request.headers.get('Authorization')?.replace('Bearer ', '');
 
     if (!token) {
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     }
 
     const session = result.rows[0] as any;
-    if (new Date(session.expiresAt) < new Date()) {
+    if (new Date(session.expiresAt as string) < new Date()) {
       await db.execute({ sql: 'DELETE FROM Session WHERE token = ?', args: [token] });
       return NextResponse.json({ authenticated: false }, { status: 401 });
     }

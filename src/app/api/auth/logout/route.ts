@@ -3,7 +3,7 @@ import { getDb } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
-    const db = getDb();
+    const db = await getDb();
     const token = request.headers.get('Authorization')?.replace('Bearer ', '');
 
     if (token) {

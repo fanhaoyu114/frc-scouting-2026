@@ -1,106 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
 // GET export all scouting data as CSV
 export async function GET(request: NextRequest) {
   try {
-    const scoutingData = await db.scoutingData.findMany({
-      include: {
-        team: true,
-        match: true,
-        user: {
-          select: {
-            username: true,
-            name: true
-          }
-        }
-      },
-      orderBy: [
-        { match: { matchNumber: 'asc' } },
-        { team: { teamNumber: 'asc' } }
-      ]
-    });
+    const db = await getDb();
+
+    const result = await db.execute(`
+      SELECT sr.*, t.number as teamNumber, t.name as teamName, m.matchNumber
+      FROM ScoutingRecord sr
+      LEFT JOIN Team t ON sr.teamId = t.id
+      LEFT JOIN Match m ON sr.matchId = m.id
+      ORDER BY m.matchNumber ASC, t.number ASC
+    `);
 
     // CSV headers
     const headers = [
       '比赛编号',
       '队伍编号',
-      '队伍昵称',
+      '队伍名称',
       '联盟',
+      '站位',
+      '自动: 离开',
+      '自动: 左侧Coral',
+      '自动: 右侧Coral',
+      '自动: Algae',
+      '手动: 左侧Coral',
+      '手动: 右侧Coral',
+      '手动: Algae',
+      'Barge',
+      'Processor',
+      '攀爬',
+      '防守',
       '情报员',
-      '自动: 离开起始线',
-      '自动: 发射球数',
-      '自动: 命中率(%)',
-      '自动: 攀爬等级',
-      '自动: 得分',
-      '过渡: 发射球数',
-      '过渡: 命中率(%)',
-      '切换1: 发射球数',
-      '切换1: 命中率(%)',
-      '切换2: 发射球数',
-      '切换2: 命中率(%)',
-      '切换3: 发射球数',
-      '切换3: 命中率(%)',
-      '切换4: 发射球数',
-      '切换4: 命中率(%)',
-      '最终: 发射球数',
-      '最终: 命中率(%)',
-      '手动: 攀爬等级',
-      '攀爬时间(秒)',
-      '手动: 得分',
-      '小犯规',
-      '大犯规',
-      '黄牌',
-      '红牌',
-      '犯规备注',
-      'Driver能力',
-      '防守能力',
-      '是否宕机',
-      '宕机时长',
+      '情报员队伍',
       '备注',
-      '总分',
-      '记录员'
+      '创建时间'
     ];
 
     // CSV rows
-    const rows = scoutingData.map(record => [
-      record.match.matchNumber,
-      record.team.teamNumber,
-      record.team.nickname || '',
+    const rows = result.rows.map(record => [
+      record.matchNumber,
+      record.teamNumber,
+      record.teamName || '',
       record.alliance,
+      record.station,
+      record.autoLeave,
+      record.autoCoralLeft,
+      record.autoCoralRight,
+      record.autoAlgae,
+      record.teleopCoralLeft,
+      record.teleopCoralRight,
+      record.teleopAlgae,
+      record.barge,
+      record.processor,
+      record.climb,
+      record.defense,
       record.scoutName || '',
-      record.autoLeftStartLine ? '是' : '否',
-      record.autoFuelShots,
-      record.autoFuelAccuracy,
-      record.autoClimbLevel,
-      record.autoScore,
-      record.teleopTransitionShots,
-      record.teleopTransitionAccuracy,
-      record.teleopShift1Shots,
-      record.teleopShift1Accuracy,
-      record.teleopShift2Shots,
-      record.teleopShift2Accuracy,
-      record.teleopShift3Shots,
-      record.teleopShift3Accuracy,
-      record.teleopShift4Shots,
-      record.teleopShift4Accuracy,
-      record.teleopEndgameShots,
-      record.teleopEndgameAccuracy,
-      record.teleopClimbLevel,
-      record.teleopClimbTime,
-      record.teleopScore,
-      record.minorFouls,
-      record.majorFouls,
-      record.yellowCard ? '是' : '否',
-      record.redCard ? '是' : '否',
-      `"${(record.foulNotes || '').replace(/"/g, '""')}"`,
-      record.driverRating,
-      record.defenseRating,
-      record.wasDisabled ? '是' : '否',
-      record.disabledDuration || '',
-      `"${(record.notes || '').replace(/"/g, '""')}"`,
-      record.totalScore,
-      record.user?.name || record.user?.username || ''
+      record.scoutTeam || '',
+      `"${(record.notes as string || '').replace(/"/g, '""')}"`,
+      record.createdAt
     ]);
 
     const csv = [
@@ -120,9 +79,6 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Export error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

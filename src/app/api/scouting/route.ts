@@ -1,177 +1,98 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { getDb, generateId } from '@/lib/db';
 
-// Calculate scores based on FRC 2026 REBUILT rules
-function calculateScores(data: {
-  autoLeftStartLine: boolean;
-  autoFuelShots: number;
-  autoFuelAccuracy: number;
-  autoClimbLevel: number;
-  autoWon: boolean;
-  teleopTransitionShots: number;
-  teleopTransitionAccuracy: number;
-  teleopShift1Shots: number;
-  teleopShift1Accuracy: number;
-  teleopShift2Shots: number;
-  teleopShift2Accuracy: number;
-  teleopShift3Shots: number;
-  teleopShift3Accuracy: number;
-  teleopShift4Shots: number;
-  teleopShift4Accuracy: number;
-  teleopEndgameShots: number;
-  teleopEndgameAccuracy: number;
-  teleopClimbLevel: number;
-}) {
-  // Auto scoring
-  let autoScore = 0;
-  
-  // Leave start line bonus (if applicable)
-  if (data.autoLeftStartLine) {
-    autoScore += 2; // Example bonus
-  }
-  
-  // Tower climb in auto: Level 1 = 15 pts, Level 2 = 20 pts, Level 3 = 30 pts
-  if (data.autoClimbLevel === 1) autoScore += 15;
-  else if (data.autoClimbLevel === 2) autoScore += 20;
-  else if (data.autoClimbLevel === 3) autoScore += 30;
-  
-  // Fuel: shots * accuracy / 100 (estimated scored fuel)
-  autoScore += Math.round(data.autoFuelShots * data.autoFuelAccuracy / 100);
-  
-  // Teleop scoring
-  let teleopScore = 0;
-  
-  // Calculate teleop fuel scores from each cycle
-  const cycleScores = [
-    { shots: data.teleopTransitionShots, accuracy: data.teleopTransitionAccuracy },
-    { shots: data.teleopShift1Shots, accuracy: data.teleopShift1Accuracy },
-    { shots: data.teleopShift2Shots, accuracy: data.teleopShift2Accuracy },
-    { shots: data.teleopShift3Shots, accuracy: data.teleopShift3Accuracy },
-    { shots: data.teleopShift4Shots, accuracy: data.teleopShift4Accuracy },
-    { shots: data.teleopEndgameShots, accuracy: data.teleopEndgameAccuracy },
-  ];
-  
-  for (const cycle of cycleScores) {
-    teleopScore += Math.round(cycle.shots * cycle.accuracy / 100);
-  }
-  
-  // Tower climb in teleop: Level 1 = 10 pts, Level 2 = 20 pts, Level 3 = 30 pts
-  if (data.teleopClimbLevel === 1) teleopScore += 10;
-  else if (data.teleopClimbLevel === 2) teleopScore += 20;
-  else if (data.teleopClimbLevel === 3) teleopScore += 30;
-
-  return {
-    autoScore,
-    teleopScore,
-    totalScore: autoScore + teleopScore
-  };
-}
-
-// GET all scouting data
+// GET all scouting records
 export async function GET(request: NextRequest) {
   try {
+    const db = await getDb();
     const { searchParams } = new URL(request.url);
     const matchId = searchParams.get('matchId');
-    const teamId = searchParams.get('teamId');
+    const teamNumber = searchParams.get('teamNumber');
 
-    const where: Record<string, string> = {};
-    if (matchId) where.matchId = matchId;
-    if (teamId) where.teamId = teamId;
+    let sql = `
+      SELECT sr.*, t.number as teamNumber, t.name as teamName,
+             m.matchNumber
+      FROM ScoutingRecord sr
+      LEFT JOIN Team t ON sr.teamId = t.id
+      LEFT JOIN Match m ON sr.matchId = m.id
+    `;
 
-    const scoutingData = await db.scoutingData.findMany({
-      where,
-      include: {
-        team: true,
-        match: true,
-        user: {
-          select: {
-            id: true,
-            username: true,
-            name: true
-          }
-        }
-      },
-      orderBy: [
-        { match: { matchNumber: 'asc' } },
-        { team: { teamNumber: 'asc' } }
-      ]
-    });
+    const conditions: string[] = [];
+    const args: (string | number)[] = [];
 
-    return NextResponse.json(scoutingData);
+    if (matchId) {
+      conditions.push('sr.matchId = ?');
+      args.push(matchId);
+    }
+    if (teamNumber) {
+      conditions.push('t.number = ?');
+      args.push(parseInt(teamNumber));
+    }
+
+    if (conditions.length > 0) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    sql += ' ORDER BY m.matchNumber ASC, t.number ASC';
+
+    const result = await db.execute({ sql, args });
+
+    const records = result.rows.map(row => ({
+      id: row.id,
+      matchId: row.matchId,
+      teamNumber: row.teamNumber,
+      teamName: row.teamName,
+      matchNumber: row.matchNumber,
+      alliance: row.alliance,
+      station: row.station,
+      autoLeave: row.autoLeave,
+      autoCoralLeft: row.autoCoralLeft,
+      autoCoralRight: row.autoCoralRight,
+      autoAlgae: row.autoAlgae,
+      teleopCoralLeft: row.teleopCoralLeft,
+      teleopCoralRight: row.teleopCoralRight,
+      teleopAlgae: row.teleopAlgae,
+      barge: row.barge,
+      processor: row.processor,
+      climb: row.climb,
+      defense: row.defense,
+      notes: row.notes,
+      scoutName: row.scoutName,
+      scoutTeam: row.scoutTeam,
+      createdAt: row.createdAt
+    }));
+
+    return NextResponse.json(records);
   } catch (error) {
     console.error('Get scouting data error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
 // POST create new scouting record
 export async function POST(request: NextRequest) {
   try {
+    const db = await getDb();
     const body = await request.json();
     const {
-      userId,
       teamNumber,
       matchNumber,
       alliance,
+      station,
+      autoLeave,
+      autoCoralLeft,
+      autoCoralRight,
+      autoAlgae,
+      teleopCoralLeft,
+      teleopCoralRight,
+      teleopAlgae,
+      barge,
+      processor,
+      climb,
+      defense,
+      notes,
       scoutName,
-      robotType, // New field
-      
-      // Auto phase
-      autoLeftStartLine,
-      autoFuelShots,
-      autoFuelAccuracy,
-      autoClimbLevel,
-      autoWon,
-      
-      // Teleop cycles
-      teleopTransitionShots,
-      teleopTransitionAccuracy,
-      teleopTransitionDefense,
-      teleopTransitionTransport,
-      teleopShift1Shots,
-      teleopShift1Accuracy,
-      teleopShift1Defense,
-      teleopShift1Transport,
-      teleopShift2Shots,
-      teleopShift2Accuracy,
-      teleopShift2Defense,
-      teleopShift2Transport,
-      teleopShift3Shots,
-      teleopShift3Accuracy,
-      teleopShift3Defense,
-      teleopShift3Transport,
-      teleopShift4Shots,
-      teleopShift4Accuracy,
-      teleopShift4Defense,
-      teleopShift4Transport,
-      teleopEndgameShots,
-      teleopEndgameAccuracy,
-      
-      // Climbing
-      teleopClimbLevel,
-      teleopClimbTime,
-      
-      // Fouls
-      minorFouls,
-      majorFouls,
-      yellowCard,
-      redCard,
-      foulRecords,
-      foulNotes,
-      
-      // Ratings
-      driverRating,
-      defenseRating,
-      
-      // Issues
-      wasDisabled,
-      disabledDuration,
-      
-      // Notes
-      notes
+      scoutTeam
     } = body;
 
     if (!teamNumber || !matchNumber || !alliance) {
@@ -182,257 +103,124 @@ export async function POST(request: NextRequest) {
     }
 
     // Get or create team
-    let team = await db.team.findUnique({
-      where: { teamNumber }
+    let teamResult = await db.execute({
+      sql: 'SELECT * FROM Team WHERE number = ?',
+      args: [teamNumber]
     });
-    if (!team) {
-      team = await db.team.create({
-        data: { teamNumber }
+
+    let teamId: string;
+    if (teamResult.rows.length === 0) {
+      teamId = generateId();
+      await db.execute({
+        sql: 'INSERT INTO Team (id, number) VALUES (?, ?)',
+        args: [teamId, teamNumber]
       });
+    } else {
+      teamId = teamResult.rows[0].id as string;
     }
 
     // Get or create match
-    let match = await db.match.findUnique({
-      where: { matchNumber }
-    });
-    if (!match) {
-      match = await db.match.create({
-        data: { matchNumber }
-      });
-    }
-
-    // Get or create preview user if no userId provided
-    let effectiveUserId = userId;
-    if (!effectiveUserId) {
-      let previewUser = await db.user.findUnique({
-        where: { username: '预览账号' }
-      });
-      if (!previewUser) {
-        previewUser = await db.user.create({
-          data: {
-            username: '预览账号',
-            password: '6353',
-            name: 'Preview Account',
-            isAdmin: true
-          }
-        });
-      }
-      effectiveUserId = previewUser.id;
-    }
-
-    // Prepare data for score calculation
-    const scoreData = {
-      autoLeftStartLine: autoLeftStartLine || false,
-      autoFuelShots: autoFuelShots || 0,
-      autoFuelAccuracy: autoFuelAccuracy || 50,
-      autoClimbLevel: autoClimbLevel || 0,
-      autoWon: autoWon || false,
-      teleopTransitionShots: teleopTransitionShots || 0,
-      teleopTransitionAccuracy: teleopTransitionAccuracy || 50,
-      teleopShift1Shots: teleopShift1Shots || 0,
-      teleopShift1Accuracy: teleopShift1Accuracy || 50,
-      teleopShift2Shots: teleopShift2Shots || 0,
-      teleopShift2Accuracy: teleopShift2Accuracy || 50,
-      teleopShift3Shots: teleopShift3Shots || 0,
-      teleopShift3Accuracy: teleopShift3Accuracy || 50,
-      teleopShift4Shots: teleopShift4Shots || 0,
-      teleopShift4Accuracy: teleopShift4Accuracy || 50,
-      teleopEndgameShots: teleopEndgameShots || 0,
-      teleopEndgameAccuracy: teleopEndgameAccuracy || 50,
-      teleopClimbLevel: teleopClimbLevel || 0,
-    };
-
-    // Calculate scores
-    const scores = calculateScores(scoreData);
-
-    // Check if record already exists for this team in this match
-    const existing = await db.scoutingData.findUnique({
-      where: {
-        matchId_teamId: {
-          matchId: match.id,
-          teamId: team.id
-        }
-      }
+    let matchResult = await db.execute({
+      sql: 'SELECT * FROM Match WHERE matchNumber = ?',
+      args: [matchNumber]
     });
 
-    const recordData = {
-      userId: effectiveUserId,
-      teamId: team.id,
-      matchId: match.id,
-      alliance,
-      scoutName: scoutName || null,
-      robotType: robotType || null,
-      autoLeftStartLine: autoLeftStartLine || false,
-      autoFuelShots: autoFuelShots || 0,
-      autoFuelAccuracy: autoFuelAccuracy || 50,
-      autoClimbLevel: autoClimbLevel || 0,
-      autoWon: autoWon || false,
-      teleopTransitionShots: teleopTransitionShots || 0,
-      teleopTransitionAccuracy: teleopTransitionAccuracy || 50,
-      teleopTransitionDefense: teleopTransitionDefense || 0,
-      teleopTransitionTransport: teleopTransitionTransport || 0,
-      teleopShift1Shots: teleopShift1Shots || 0,
-      teleopShift1Accuracy: teleopShift1Accuracy || 50,
-      teleopShift1Defense: teleopShift1Defense || 0,
-      teleopShift1Transport: teleopShift1Transport || 0,
-      teleopShift2Shots: teleopShift2Shots || 0,
-      teleopShift2Accuracy: teleopShift2Accuracy || 50,
-      teleopShift2Defense: teleopShift2Defense || 0,
-      teleopShift2Transport: teleopShift2Transport || 0,
-      teleopShift3Shots: teleopShift3Shots || 0,
-      teleopShift3Accuracy: teleopShift3Accuracy || 50,
-      teleopShift3Defense: teleopShift3Defense || 0,
-      teleopShift3Transport: teleopShift3Transport || 0,
-      teleopShift4Shots: teleopShift4Shots || 0,
-      teleopShift4Accuracy: teleopShift4Accuracy || 50,
-      teleopShift4Defense: teleopShift4Defense || 0,
-      teleopShift4Transport: teleopShift4Transport || 0,
-      teleopEndgameShots: teleopEndgameShots || 0,
-      teleopEndgameAccuracy: teleopEndgameAccuracy || 50,
-      teleopClimbLevel: teleopClimbLevel || 0,
-      teleopClimbTime: teleopClimbTime || 0,
-      minorFouls: minorFouls || 0,
-      majorFouls: majorFouls || 0,
-      yellowCard: yellowCard || false,
-      redCard: redCard || false,
-      foulRecords: foulRecords || null,
-      foulNotes: foulNotes || null,
-      driverRating: driverRating || 5.0,
-      defenseRating: defenseRating || 5.0,
-      wasDisabled: wasDisabled || false,
-      disabledDuration: disabledDuration || null,
-      notes: notes || null,
-      autoScore: scores.autoScore,
-      teleopScore: scores.teleopScore,
-      totalScore: scores.totalScore
-    };
+    let matchId: string;
+    if (matchResult.rows.length === 0) {
+      matchId = generateId();
+      await db.execute({
+        sql: 'INSERT INTO Match (id, matchNumber) VALUES (?, ?)',
+        args: [matchId, matchNumber]
+      });
+    } else {
+      matchId = matchResult.rows[0].id as string;
+    }
 
-    if (existing) {
+    // Check if record already exists
+    const existingResult = await db.execute({
+      sql: 'SELECT * FROM ScoutingRecord WHERE matchId = ? AND teamId = ?',
+      args: [matchId, teamId]
+    });
+
+    const id = existingResult.rows.length > 0
+      ? existingResult.rows[0].id as string
+      : generateId();
+
+    if (existingResult.rows.length > 0) {
       // Update existing record
-      const updated = await db.scoutingData.update({
-        where: { id: existing.id },
-        data: recordData,
-        include: {
-          team: true,
-          match: true
-        }
+      await db.execute({
+        sql: `UPDATE ScoutingRecord SET
+              alliance = ?, station = ?, autoLeave = ?, autoCoralLeft = ?, autoCoralRight = ?,
+              autoAlgae = ?, teleopCoralLeft = ?, teleopCoralRight = ?, teleopAlgae = ?,
+              barge = ?, processor = ?, climb = ?, defense = ?, notes = ?,
+              scoutName = ?, scoutTeam = ?
+              WHERE id = ?`,
+        args: [
+          alliance, station || 1, autoLeave || 0, autoCoralLeft || 0, autoCoralRight || 0,
+          autoAlgae || 0, teleopCoralLeft || 0, teleopCoralRight || 0, teleopAlgae || 0,
+          barge || 0, processor || 0, climb || 'none', defense || 0, notes || null,
+          scoutName || null, scoutTeam || null, id
+        ]
       });
-      return NextResponse.json(updated);
+    } else {
+      // Create new record
+      await db.execute({
+        sql: `INSERT INTO ScoutingRecord (
+                id, matchId, teamId, alliance, station,
+                autoLeave, autoCoralLeft, autoCoralRight, autoAlgae,
+                teleopCoralLeft, teleopCoralRight, teleopAlgae,
+                barge, processor, climb, defense, notes,
+                scoutName, scoutTeam
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          id, matchId, teamId, alliance, station || 1,
+          autoLeave || 0, autoCoralLeft || 0, autoCoralRight || 0, autoAlgae || 0,
+          teleopCoralLeft || 0, teleopCoralRight || 0, teleopAlgae || 0,
+          barge || 0, processor || 0, climb || 'none', defense || 0, notes || null,
+          scoutName || null, scoutTeam || null
+        ]
+      });
     }
 
-    // Create new record
-    const scoutingRecord = await db.scoutingData.create({
-      data: recordData,
-      include: {
-        team: true,
-        match: true
-      }
+    return NextResponse.json({
+      id, matchId, teamId, teamNumber, matchNumber, alliance,
+      station: station || 1,
+      autoLeave: autoLeave || 0,
+      autoCoralLeft: autoCoralLeft || 0,
+      autoCoralRight: autoCoralRight || 0,
+      autoAlgae: autoAlgae || 0,
+      teleopCoralLeft: teleopCoralLeft || 0,
+      teleopCoralRight: teleopCoralRight || 0,
+      teleopAlgae: teleopAlgae || 0,
+      barge: barge || 0,
+      processor: processor || 0,
+      climb: climb || 'none',
+      defense: defense || 0,
+      notes: notes || null,
+      scoutName: scoutName || null,
+      scoutTeam: scoutTeam || null
     });
-
-    return NextResponse.json(scoutingRecord);
   } catch (error) {
     console.error('Create scouting record error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-// PUT update scouting record
-export async function PUT(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { id, ...updateData } = body;
-
-    if (!id) {
-      return NextResponse.json(
-        { error: 'Scouting record ID is required' },
-        { status: 400 }
-      );
-    }
-
-    // Get existing record
-    const existing = await db.scoutingData.findUnique({
-      where: { id }
-    });
-
-    if (!existing) {
-      return NextResponse.json(
-        { error: 'Scouting record not found' },
-        { status: 404 }
-      );
-    }
-
-    // Calculate scores with updated data
-    const scores = calculateScores({
-      autoLeftStartLine: updateData.autoLeftStartLine ?? existing.autoLeftStartLine,
-      autoFuelShots: updateData.autoFuelShots ?? existing.autoFuelShots,
-      autoFuelAccuracy: updateData.autoFuelAccuracy ?? existing.autoFuelAccuracy,
-      autoClimbLevel: updateData.autoClimbLevel ?? existing.autoClimbLevel,
-      autoWon: updateData.autoWon ?? existing.autoWon,
-      teleopTransitionShots: updateData.teleopTransitionShots ?? existing.teleopTransitionShots,
-      teleopTransitionAccuracy: updateData.teleopTransitionAccuracy ?? existing.teleopTransitionAccuracy,
-      teleopShift1Shots: updateData.teleopShift1Shots ?? existing.teleopShift1Shots,
-      teleopShift1Accuracy: updateData.teleopShift1Accuracy ?? existing.teleopShift1Accuracy,
-      teleopShift2Shots: updateData.teleopShift2Shots ?? existing.teleopShift2Shots,
-      teleopShift2Accuracy: updateData.teleopShift2Accuracy ?? existing.teleopShift2Accuracy,
-      teleopShift3Shots: updateData.teleopShift3Shots ?? existing.teleopShift3Shots,
-      teleopShift3Accuracy: updateData.teleopShift3Accuracy ?? existing.teleopShift3Accuracy,
-      teleopShift4Shots: updateData.teleopShift4Shots ?? existing.teleopShift4Shots,
-      teleopShift4Accuracy: updateData.teleopShift4Accuracy ?? existing.teleopShift4Accuracy,
-      teleopEndgameShots: updateData.teleopEndgameShots ?? existing.teleopEndgameShots,
-      teleopEndgameAccuracy: updateData.teleopEndgameAccuracy ?? existing.teleopEndgameAccuracy,
-      teleopClimbLevel: updateData.teleopClimbLevel ?? existing.teleopClimbLevel,
-    });
-
-    const updated = await db.scoutingData.update({
-      where: { id },
-      data: {
-        ...updateData,
-        autoScore: scores.autoScore,
-        teleopScore: scores.teleopScore,
-        totalScore: scores.totalScore
-      },
-      include: {
-        team: true,
-        match: true
-      }
-    });
-
-    return NextResponse.json(updated);
-  } catch (error) {
-    console.error('Update scouting record error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
 // DELETE scouting record
 export async function DELETE(request: NextRequest) {
   try {
+    const db = await getDb();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
     if (!id) {
-      return NextResponse.json(
-        { error: 'Scouting record ID is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Scouting record ID is required' }, { status: 400 });
     }
 
-    await db.scoutingData.delete({
-      where: { id }
-    });
-
+    await db.execute({ sql: 'DELETE FROM ScoutingRecord WHERE id = ?', args: [id] });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Delete scouting record error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

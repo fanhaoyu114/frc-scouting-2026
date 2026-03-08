@@ -3,7 +3,7 @@ import { getDb, generateId, generateToken } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
-    const db = getDb();
+    const db = await getDb();
     const body = await request.json();
     const { username, password } = body;
 

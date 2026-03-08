@@ -1,346 +1,124 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-
-interface CycleStats {
-  avgShots: number;
-  avgAccuracy: number;
-}
-
-interface TeamCycleStats {
-  transition: CycleStats;
-  shift1: CycleStats;
-  shift2: CycleStats;
-  shift3: CycleStats;
-  shift4: CycleStats;
-  endgame: CycleStats;
-}
-
-interface TeamStatResult {
-  teamId: string;
-  teamNumber: number;
-  nickname: string | null;
-  matchCount: number;
-  avgTotalScore: number;
-  avgAutoScore: number;
-  avgTeleopScore: number;
-  avgFuelScored: number;
-  climbSuccessRate: number;
-  autoLeaveRate: number;
-  avgDefenseTime: number;
-  avgDriverRating: number;
-  avgDefenseRating: number;
-  autoCapability: number;
-  fuelEfficiency: number;
-  climbCapability: number;
-  scoresByMatch: Array<{
-    matchNumber: number;
-    totalScore: number;
-    autoScore: number;
-    teleopScore: number;
-  }>;
-  cycleStats?: TeamCycleStats;
-}
+import { getDb } from '@/lib/db';
 
 // GET team statistics
 export async function GET(request: NextRequest) {
   try {
+    const db = await getDb();
     const { searchParams } = new URL(request.url);
     const teamId = searchParams.get('teamId');
-    const compareTeamIds = searchParams.get('compare'); // comma-separated team IDs for comparison
 
     if (teamId) {
       // Get stats for specific team
-      const records = await db.scoutingData.findMany({
-        where: { teamId },
-        include: { match: true }
+      const result = await db.execute({
+        sql: `
+          SELECT sr.*, m.matchNumber, t.number as teamNumber, t.name as teamName
+          FROM ScoutingRecord sr
+          LEFT JOIN Match m ON sr.matchId = m.id
+          LEFT JOIN Team t ON sr.teamId = t.id
+          WHERE sr.teamId = ?
+          ORDER BY m.matchNumber ASC
+        `,
+        args: [teamId]
       });
 
-      if (records.length === 0) {
+      if (result.rows.length === 0) {
         return NextResponse.json({
           teamId,
           matchCount: 0,
-          avgTotalScore: 0,
-          avgAutoScore: 0,
-          avgTeleopScore: 0,
-          avgFuelScored: 0,
+          avgAutoLeave: 0,
+          avgAutoCoral: 0,
+          avgAutoAlgae: 0,
+          avgTeleopCoral: 0,
+          avgTeleopAlgae: 0,
+          avgBarge: 0,
+          avgProcessor: 0,
           climbSuccessRate: 0,
-          autoLeaveRate: 0,
-          avgDefenseTime: 0,
-          scoresByMatch: [],
-          cycleStats: {
-            transition: { avgShots: 0, avgAccuracy: 0 },
-            shift1: { avgShots: 0, avgAccuracy: 0 },
-            shift2: { avgShots: 0, avgAccuracy: 0 },
-            shift3: { avgShots: 0, avgAccuracy: 0 },
-            shift4: { avgShots: 0, avgAccuracy: 0 },
-            endgame: { avgShots: 0, avgAccuracy: 0 },
-          }
+          avgDefense: 0,
+          records: []
         });
       }
 
+      const records = result.rows;
       const totalMatches = records.length;
-      const avgTotalScore = records.reduce((sum, r) => sum + r.totalScore, 0) / totalMatches;
-      const avgAutoScore = records.reduce((sum, r) => sum + r.autoScore, 0) / totalMatches;
-      const avgTeleopScore = records.reduce((sum, r) => sum + r.teleopScore, 0) / totalMatches;
-      const totalFuelShots = records.reduce((sum, r) => 
-        sum + r.autoFuelShots + 
-        r.teleopTransitionShots + r.teleopShift1Shots + r.teleopShift2Shots + 
-        r.teleopShift3Shots + r.teleopShift4Shots + r.teleopEndgameShots, 0);
-      const avgFuelScored = totalFuelShots / totalMatches;
-      const climbSuccessRate = records.filter(r => r.teleopClimbLevel > 0).length / totalMatches * 100;
-      const autoLeaveRate = records.filter(r => r.autoLeftStartLine).length / totalMatches * 100;
-      const avgDefenseTime = records.reduce((sum, r) => 
-        sum + r.teleopTransitionDefense + r.teleopShift1Defense + 
-        r.teleopShift2Defense + r.teleopShift3Defense + r.teleopShift4Defense, 0) / totalMatches;
-      const avgDriverRating = records.reduce((sum, r) => sum + r.driverRating, 0) / totalMatches;
-      const avgDefenseRating = records.reduce((sum, r) => sum + r.defenseRating, 0) / totalMatches;
 
-      // Score trend by match
-      const scoresByMatch = records
-        .sort((a, b) => a.match.matchNumber - b.match.matchNumber)
-        .map(r => ({
-          matchNumber: r.match.matchNumber,
-          totalScore: r.totalScore,
-          autoScore: r.autoScore,
-          teleopScore: r.teleopScore
-        }));
-
-      // Cycle stats
-      const cycleStats: TeamCycleStats = {
-        transition: {
-          avgShots: records.reduce((sum, r) => sum + r.teleopTransitionShots, 0) / totalMatches,
-          avgAccuracy: records.reduce((sum, r) => sum + r.teleopTransitionAccuracy, 0) / totalMatches
-        },
-        shift1: {
-          avgShots: records.reduce((sum, r) => sum + r.teleopShift1Shots, 0) / totalMatches,
-          avgAccuracy: records.reduce((sum, r) => sum + r.teleopShift1Accuracy, 0) / totalMatches
-        },
-        shift2: {
-          avgShots: records.reduce((sum, r) => sum + r.teleopShift2Shots, 0) / totalMatches,
-          avgAccuracy: records.reduce((sum, r) => sum + r.teleopShift2Accuracy, 0) / totalMatches
-        },
-        shift3: {
-          avgShots: records.reduce((sum, r) => sum + r.teleopShift3Shots, 0) / totalMatches,
-          avgAccuracy: records.reduce((sum, r) => sum + r.teleopShift3Accuracy, 0) / totalMatches
-        },
-        shift4: {
-          avgShots: records.reduce((sum, r) => sum + r.teleopShift4Shots, 0) / totalMatches,
-          avgAccuracy: records.reduce((sum, r) => sum + r.teleopShift4Accuracy, 0) / totalMatches
-        },
-        endgame: {
-          avgShots: records.reduce((sum, r) => sum + r.teleopEndgameShots, 0) / totalMatches,
-          avgAccuracy: records.reduce((sum, r) => sum + r.teleopEndgameAccuracy, 0) / totalMatches
-        }
-      };
+      const avgAutoLeave = records.reduce((sum, r) => sum + ((r.autoLeave as number) || 0), 0) / totalMatches;
+      const avgAutoCoral = records.reduce((sum, r) => sum + ((r.autoCoralLeft as number) || 0) + ((r.autoCoralRight as number) || 0), 0) / totalMatches;
+      const avgAutoAlgae = records.reduce((sum, r) => sum + ((r.autoAlgae as number) || 0), 0) / totalMatches;
+      const avgTeleopCoral = records.reduce((sum, r) => sum + ((r.teleopCoralLeft as number) || 0) + ((r.teleopCoralRight as number) || 0), 0) / totalMatches;
+      const avgTeleopAlgae = records.reduce((sum, r) => sum + ((r.teleopAlgae as number) || 0), 0) / totalMatches;
+      const avgBarge = records.reduce((sum, r) => sum + ((r.barge as number) || 0), 0) / totalMatches;
+      const avgProcessor = records.reduce((sum, r) => sum + ((r.processor as number) || 0), 0) / totalMatches;
+      const climbSuccessRate = records.filter(r => r.climb !== 'none').length / totalMatches * 100;
+      const avgDefense = records.reduce((sum, r) => sum + ((r.defense as number) || 0), 0) / totalMatches;
 
       return NextResponse.json({
         teamId,
+        teamNumber: records[0].teamNumber,
+        teamName: records[0].teamName,
         matchCount: totalMatches,
-        avgTotalScore: Math.round(avgTotalScore * 10) / 10,
-        avgAutoScore: Math.round(avgAutoScore * 10) / 10,
-        avgTeleopScore: Math.round(avgTeleopScore * 10) / 10,
-        avgFuelScored: Math.round(avgFuelScored * 10) / 10,
+        avgAutoLeave: Math.round(avgAutoLeave * 10) / 10,
+        avgAutoCoral: Math.round(avgAutoCoral * 10) / 10,
+        avgAutoAlgae: Math.round(avgAutoAlgae * 10) / 10,
+        avgTeleopCoral: Math.round(avgTeleopCoral * 10) / 10,
+        avgTeleopAlgae: Math.round(avgTeleopAlgae * 10) / 10,
+        avgBarge: Math.round(avgBarge * 10) / 10,
+        avgProcessor: Math.round(avgProcessor * 10) / 10,
         climbSuccessRate: Math.round(climbSuccessRate * 10) / 10,
-        autoLeaveRate: Math.round(autoLeaveRate * 10) / 10,
-        avgDefenseTime: Math.round(avgDefenseTime * 10) / 10,
-        avgDriverRating: Math.round(avgDriverRating * 10) / 10,
-        avgDefenseRating: Math.round(avgDefenseRating * 10) / 10,
-        scoresByMatch,
-        cycleStats,
-        climbLevelDistribution: {
-          level0: records.filter(r => r.teleopClimbLevel === 0).length,
-          level1: records.filter(r => r.teleopClimbLevel === 1).length,
-          level2: records.filter(r => r.teleopClimbLevel === 2).length,
-          level3: records.filter(r => r.teleopClimbLevel === 3).length
-        }
+        avgDefense: Math.round(avgDefense * 10) / 10,
+        records: records.map(r => ({
+          matchNumber: r.matchNumber,
+          autoLeave: r.autoLeave,
+          autoCoralLeft: r.autoCoralLeft,
+          autoCoralRight: r.autoCoralRight,
+          autoAlgae: r.autoAlgae,
+          teleopCoralLeft: r.teleopCoralLeft,
+          teleopCoralRight: r.teleopCoralRight,
+          teleopAlgae: r.teleopAlgae,
+          barge: r.barge,
+          processor: r.processor,
+          climb: r.climb,
+          defense: r.defense
+        }))
       });
     }
 
-    // Handle comparison mode
-    if (compareTeamIds) {
-      const teamIds = compareTeamIds.split(',');
-      const comparisonData: Array<{
-        teamId: string;
-        teamNumber: number;
-        nickname: string | null;
-        matchCount: number;
-        avgTotalScore: number;
-        avgAutoScore: number;
-        avgTeleopScore: number;
-        climbSuccessRate: number;
-        avgDriverRating: number;
-        avgDefenseRating: number;
-      }> = [];
-      
-      for (const tid of teamIds) {
-        const team = await db.team.findUnique({
-          where: { id: tid },
-          include: { scoutingRecords: { include: { match: true } } }
-        });
-        
-        if (team && team.scoutingRecords.length > 0) {
-          const records = team.scoutingRecords;
-          const totalMatches = records.length;
-          
-          comparisonData.push({
-            teamId: team.id,
-            teamNumber: team.teamNumber,
-            nickname: team.nickname,
-            matchCount: totalMatches,
-            avgTotalScore: Math.round(records.reduce((sum, r) => sum + r.totalScore, 0) / totalMatches * 10) / 10,
-            avgAutoScore: Math.round(records.reduce((sum, r) => sum + r.autoScore, 0) / totalMatches * 10) / 10,
-            avgTeleopScore: Math.round(records.reduce((sum, r) => sum + r.teleopScore, 0) / totalMatches * 10) / 10,
-            climbSuccessRate: Math.round(records.filter(r => r.teleopClimbLevel > 0).length / totalMatches * 1000) / 10,
-            avgDriverRating: Math.round(records.reduce((sum, r) => sum + r.driverRating, 0) / totalMatches * 10) / 10,
-            avgDefenseRating: Math.round(records.reduce((sum, r) => sum + r.defenseRating, 0) / totalMatches * 10) / 10,
-          });
-        }
-      }
-      
-      return NextResponse.json({ comparison: comparisonData });
-    }
-
     // Get stats for all teams
-    const teams = await db.team.findMany({
-      include: {
-        scoutingRecords: {
-          include: { match: true }
-        }
-      }
-    });
+    const result = await db.execute(`
+      SELECT t.id as teamId, t.number as teamNumber, t.name as teamName,
+             COUNT(sr.id) as matchCount,
+             AVG(sr.autoLeave) as avgAutoLeave,
+             AVG(sr.autoCoralLeft + sr.autoCoralRight) as avgAutoCoral,
+             AVG(sr.autoAlgae) as avgAutoAlgae,
+             AVG(sr.teleopCoralLeft + sr.teleopCoralRight) as avgTeleopCoral,
+             AVG(sr.teleopAlgae) as avgTeleopAlgae,
+             AVG(sr.barge) as avgBarge,
+             AVG(sr.processor) as avgProcessor,
+             AVG(sr.defense) as avgDefense
+      FROM Team t
+      LEFT JOIN ScoutingRecord sr ON t.id = sr.teamId
+      GROUP BY t.id
+      ORDER BY avgAutoCoral DESC, avgTeleopCoral DESC
+    `);
 
-    const teamStats: TeamStatResult[] = teams.map(team => {
-      const records = team.scoutingRecords;
-      if (records.length === 0) {
-        return {
-          teamId: team.id,
-          teamNumber: team.teamNumber,
-          nickname: team.nickname,
-          matchCount: 0,
-          avgTotalScore: 0,
-          avgAutoScore: 0,
-          avgTeleopScore: 0,
-          avgFuelScored: 0,
-          climbSuccessRate: 0,
-          autoLeaveRate: 0,
-          avgDefenseTime: 0,
-          autoCapability: 0,
-          fuelEfficiency: 0,
-          climbCapability: 0,
-          avgDriverRating: 0,
-          avgDefenseRating: 0,
-          scoresByMatch: [],
-          cycleStats: {
-            transition: { avgShots: 0, avgAccuracy: 0 },
-            shift1: { avgShots: 0, avgAccuracy: 0 },
-            shift2: { avgShots: 0, avgAccuracy: 0 },
-            shift3: { avgShots: 0, avgAccuracy: 0 },
-            shift4: { avgShots: 0, avgAccuracy: 0 },
-            endgame: { avgShots: 0, avgAccuracy: 0 },
-          }
-        };
-      }
-
-      const totalMatches = records.length;
-      const avgTotalScore = records.reduce((sum, r) => sum + r.totalScore, 0) / totalMatches;
-      const avgAutoScore = records.reduce((sum, r) => sum + r.autoScore, 0) / totalMatches;
-      const avgTeleopScore = records.reduce((sum, r) => sum + r.teleopScore, 0) / totalMatches;
-      const totalFuelShots = records.reduce((sum, r) => 
-        sum + r.autoFuelShots + 
-        r.teleopTransitionShots + r.teleopShift1Shots + r.teleopShift2Shots + 
-        r.teleopShift3Shots + r.teleopShift4Shots + r.teleopEndgameShots, 0);
-      const avgFuelScored = totalFuelShots / totalMatches;
-      const climbSuccessRate = records.filter(r => r.teleopClimbLevel > 0).length / totalMatches * 100;
-      const autoLeaveRate = records.filter(r => r.autoLeftStartLine).length / totalMatches * 100;
-      const avgDefenseTime = records.reduce((sum, r) => 
-        sum + r.teleopTransitionDefense + r.teleopShift1Defense + 
-        r.teleopShift2Defense + r.teleopShift3Defense + r.teleopShift4Defense, 0) / totalMatches;
-      const avgDriverRating = records.reduce((sum, r) => sum + r.driverRating, 0) / totalMatches;
-      const avgDefenseRating = records.reduce((sum, r) => sum + r.defenseRating, 0) / totalMatches;
-
-      // Score trend by match
-      const scoresByMatch = records
-        .map(r => ({
-          matchNumber: r.match.matchNumber,
-          totalScore: r.totalScore,
-          autoScore: r.autoScore,
-          teleopScore: r.teleopScore
-        }))
-        .sort((a, b) => a.matchNumber - b.matchNumber);
-
-      // Calculate capability ratings (0-10 scale)
-      const autoCapability = Math.min(10, (
-        (autoLeaveRate / 100) * 3 +
-        (records.reduce((sum, r) => sum + r.autoClimbLevel, 0) / totalMatches) +
-        Math.min(4, avgAutoScore / 10)
-      ));
-
-      const fuelEfficiency = Math.min(10, avgFuelScored / 10);
-
-      const climbCapability = Math.min(10, (
-        (climbSuccessRate / 100) * 5 +
-        (records.reduce((sum, r) => sum + Math.max(r.autoClimbLevel, r.teleopClimbLevel), 0) / totalMatches) * 1.67
-      ));
-
-      // Cycle stats
-      const cycleStats: TeamCycleStats = {
-        transition: {
-          avgShots: Math.round(records.reduce((sum, r) => sum + r.teleopTransitionShots, 0) / totalMatches * 10) / 10,
-          avgAccuracy: Math.round(records.reduce((sum, r) => sum + r.teleopTransitionAccuracy, 0) / totalMatches * 10) / 10
-        },
-        shift1: {
-          avgShots: Math.round(records.reduce((sum, r) => sum + r.teleopShift1Shots, 0) / totalMatches * 10) / 10,
-          avgAccuracy: Math.round(records.reduce((sum, r) => sum + r.teleopShift1Accuracy, 0) / totalMatches * 10) / 10
-        },
-        shift2: {
-          avgShots: Math.round(records.reduce((sum, r) => sum + r.teleopShift2Shots, 0) / totalMatches * 10) / 10,
-          avgAccuracy: Math.round(records.reduce((sum, r) => sum + r.teleopShift2Accuracy, 0) / totalMatches * 10) / 10
-        },
-        shift3: {
-          avgShots: Math.round(records.reduce((sum, r) => sum + r.teleopShift3Shots, 0) / totalMatches * 10) / 10,
-          avgAccuracy: Math.round(records.reduce((sum, r) => sum + r.teleopShift3Accuracy, 0) / totalMatches * 10) / 10
-        },
-        shift4: {
-          avgShots: Math.round(records.reduce((sum, r) => sum + r.teleopShift4Shots, 0) / totalMatches * 10) / 10,
-          avgAccuracy: Math.round(records.reduce((sum, r) => sum + r.teleopShift4Accuracy, 0) / totalMatches * 10) / 10
-        },
-        endgame: {
-          avgShots: Math.round(records.reduce((sum, r) => sum + r.teleopEndgameShots, 0) / totalMatches * 10) / 10,
-          avgAccuracy: Math.round(records.reduce((sum, r) => sum + r.teleopEndgameAccuracy, 0) / totalMatches * 10) / 10
-        }
-      };
-
-      return {
-        teamId: team.id,
-        teamNumber: team.teamNumber,
-        nickname: team.nickname,
-        matchCount: totalMatches,
-        avgTotalScore: Math.round(avgTotalScore * 10) / 10,
-        avgAutoScore: Math.round(avgAutoScore * 10) / 10,
-        avgTeleopScore: Math.round(avgTeleopScore * 10) / 10,
-        avgFuelScored: Math.round(avgFuelScored * 10) / 10,
-        climbSuccessRate: Math.round(climbSuccessRate * 10) / 10,
-        autoLeaveRate: Math.round(autoLeaveRate * 10) / 10,
-        avgDefenseTime: Math.round(avgDefenseTime * 10) / 10,
-        autoCapability: Math.round(autoCapability * 10) / 10,
-        fuelEfficiency: Math.round(fuelEfficiency * 10) / 10,
-        climbCapability: Math.round(climbCapability * 10) / 10,
-        avgDriverRating: Math.round(avgDriverRating * 10) / 10,
-        avgDefenseRating: Math.round(avgDefenseRating * 10) / 10,
-        scoresByMatch,
-        cycleStats
-      };
-    });
-
-    // Sort by average total score
-    teamStats.sort((a, b) => b.avgTotalScore - a.avgTotalScore);
+    const teamStats = result.rows.map(row => ({
+      teamId: row.teamId,
+      teamNumber: row.teamNumber,
+      teamName: row.teamName,
+      matchCount: row.matchCount,
+      avgAutoLeave: Math.round((row.avgAutoLeave as number || 0) * 10) / 10,
+      avgAutoCoral: Math.round((row.avgAutoCoral as number || 0) * 10) / 10,
+      avgAutoAlgae: Math.round((row.avgAutoAlgae as number || 0) * 10) / 10,
+      avgTeleopCoral: Math.round((row.avgTeleopCoral as number || 0) * 10) / 10,
+      avgTeleopAlgae: Math.round((row.avgTeleopAlgae as number || 0) * 10) / 10,
+      avgBarge: Math.round((row.avgBarge as number || 0) * 10) / 10,
+      avgProcessor: Math.round((row.avgProcessor as number || 0) * 10) / 10,
+      avgDefense: Math.round((row.avgDefense as number || 0) * 10) / 10
+    }));
 
     return NextResponse.json(teamStats);
   } catch (error) {
     console.error('Get stats error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
