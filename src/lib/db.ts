@@ -50,76 +50,49 @@ CREATE TABLE IF NOT EXISTS ScoutingRecord (
   alliance TEXT NOT NULL,
   scoutName TEXT,
   robotType TEXT,
-
-  -- Autonomous Phase
   autoLeftStartLine INTEGER DEFAULT 0,
   autoFuelShots INTEGER DEFAULT 0,
   autoFuelAccuracy REAL DEFAULT 50,
   autoClimbLevel INTEGER DEFAULT 0,
   autoWon INTEGER DEFAULT 0,
-
-  -- Teleop Transition
   teleopTransitionShots INTEGER DEFAULT 0,
   teleopTransitionAccuracy REAL DEFAULT 50,
   teleopTransitionDefense INTEGER DEFAULT 0,
   teleopTransitionTransport INTEGER DEFAULT 0,
-
-  -- Teleop Shift 1
   teleopShift1Shots INTEGER DEFAULT 0,
   teleopShift1Accuracy REAL DEFAULT 50,
   teleopShift1Defense INTEGER DEFAULT 0,
   teleopShift1Transport INTEGER DEFAULT 0,
-
-  -- Teleop Shift 2
   teleopShift2Shots INTEGER DEFAULT 0,
   teleopShift2Accuracy REAL DEFAULT 50,
   teleopShift2Defense INTEGER DEFAULT 0,
   teleopShift2Transport INTEGER DEFAULT 0,
-
-  -- Teleop Shift 3
   teleopShift3Shots INTEGER DEFAULT 0,
   teleopShift3Accuracy REAL DEFAULT 50,
   teleopShift3Defense INTEGER DEFAULT 0,
   teleopShift3Transport INTEGER DEFAULT 0,
-
-  -- Teleop Shift 4
   teleopShift4Shots INTEGER DEFAULT 0,
   teleopShift4Accuracy REAL DEFAULT 50,
   teleopShift4Defense INTEGER DEFAULT 0,
   teleopShift4Transport INTEGER DEFAULT 0,
-
-  -- Teleop Endgame
   teleopEndgameShots INTEGER DEFAULT 0,
   teleopEndgameAccuracy REAL DEFAULT 50,
-
-  -- Climbing
   teleopClimbLevel INTEGER DEFAULT 0,
   teleopClimbTime INTEGER DEFAULT 0,
-
-  -- Fouls
   minorFouls INTEGER DEFAULT 0,
   majorFouls INTEGER DEFAULT 0,
   yellowCard INTEGER DEFAULT 0,
   redCard INTEGER DEFAULT 0,
   foulRecords TEXT,
   foulNotes TEXT,
-
-  -- Ratings
   driverRating REAL DEFAULT 5.0,
   defenseRating REAL DEFAULT 5.0,
-
-  -- Issues
   wasDisabled INTEGER DEFAULT 0,
   disabledDuration TEXT,
-
-  -- Notes
   notes TEXT,
-
-  -- Calculated scores
   autoScore INTEGER DEFAULT 0,
   teleopScore INTEGER DEFAULT 0,
   totalScore INTEGER DEFAULT 0,
-
   createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (matchId) REFERENCES Match(id),
   FOREIGN KEY (teamId) REFERENCES Team(id),
@@ -158,7 +131,7 @@ async function getDbClient(): Promise<Client> {
     throw new Error('DATABASE_URL environment variable is not set');
   }
 
-  // For Turso remote connections (libsql:// or https://)
+  // Turso 远程数据库 (libsql:// 或 https://)
   if (databaseUrl.startsWith('libsql://') || databaseUrl.startsWith('https://')) {
     if (!authToken) {
       throw new Error('DATABASE_AUTH_TOKEN is required for Turso connection');
@@ -170,12 +143,12 @@ async function getDbClient(): Promise<Client> {
       authToken: authToken,
     });
   } else if (databaseUrl.startsWith('file:')) {
-    // For local SQLite file - use standard libsql client
+    // 本地 SQLite 文件 - 使用标准 libsql 客户端
     console.log('[DB] Connecting to local SQLite file...');
     const { createClient } = await import('@libsql/client');
     dbInstance = createClient({ url: databaseUrl });
-  } else if (databaseUrl.startsWith('http://') || databaseUrl.startsWith('https://')) {
-    // HTTP-based connection
+  } else if (databaseUrl.startsWith('http://')) {
+    // HTTP 连接
     console.log('[DB] Connecting via HTTP...');
     const { createClient } = await import('@libsql/client/web');
     dbInstance = createClient({
@@ -183,7 +156,7 @@ async function getDbClient(): Promise<Client> {
       authToken: authToken,
     });
   } else {
-    // Assume it's a local path, prefix with file:
+    // 假设是本地路径，添加 file: 前缀
     console.log('[DB] Connecting to local SQLite (assuming file path)...');
     const { createClient } = await import('@libsql/client');
     dbInstance = createClient({ url: 'file:' + databaseUrl });
