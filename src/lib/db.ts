@@ -1,4 +1,4 @@
-import { createClient, Client } from '@libsql/client/web';
+import type { Client } from '@libsql/client/web';
 
 let dbInstance: Client | null = null;
 let tablesInitialized = false;
@@ -146,7 +146,7 @@ async function initializeTables(db: Client): Promise<void> {
   }
 }
 
-function getDbClient(): Client {
+async function getDbClient(): Promise<Client> {
   if (dbInstance) return dbInstance;
 
   const databaseUrl = process.env.DATABASE_URL;
@@ -158,18 +158,35 @@ function getDbClient(): Client {
     throw new Error('DATABASE_URL environment variable is not set');
   }
 
+  // For Turso remote connections (libsql:// or https://)
   if (databaseUrl.startsWith('libsql://') || databaseUrl.startsWith('https://')) {
     if (!authToken) {
       throw new Error('DATABASE_AUTH_TOKEN is required for Turso connection');
     }
     console.log('[DB] Connecting to Turso...');
+    const { createClient } = await import('@libsql/client/web');
+    dbInstance = createClient({
+      url: databaseUrl,
+      authToken: authToken,
+    });
+  } else if (databaseUrl.startsWith('file:')) {
+    // For local SQLite file - use standard libsql client
+    console.log('[DB] Connecting to local SQLite file...');
+    const { createClient } = await import('@libsql/client');
+    dbInstance = createClient({ url: databaseUrl });
+  } else if (databaseUrl.startsWith('http://') || databaseUrl.startsWith('https://')) {
+    // HTTP-based connection
+    console.log('[DB] Connecting via HTTP...');
+    const { createClient } = await import('@libsql/client/web');
     dbInstance = createClient({
       url: databaseUrl,
       authToken: authToken,
     });
   } else {
-    console.log('[DB] Using local SQLite...');
-    dbInstance = createClient({ url: databaseUrl });
+    // Assume it's a local path, prefix with file:
+    console.log('[DB] Connecting to local SQLite (assuming file path)...');
+    const { createClient } = await import('@libsql/client');
+    dbInstance = createClient({ url: 'file:' + databaseUrl });
   }
 
   console.log('[DB] Connected successfully');
@@ -177,7 +194,7 @@ function getDbClient(): Client {
 }
 
 export const getDb = async (): Promise<Client> => {
-  const db = getDbClient();
+  const db = await getDbClient();
   await initializeTables(db);
   return db;
 };
